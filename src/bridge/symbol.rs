@@ -89,7 +89,16 @@ pub struct Symbol<'a> {
 
 impl<'a> Symbol<'a> {
     pub fn name(&self) -> Option<Cow<'_, str>> {
-        unsafe { (*self.c_symbol).name() }
+        unsafe {
+        match self.c_symbol.is_null() || (*self.c_symbol).name.is_null() {
+            true => {
+                None
+            }
+            false => {
+               (*self.c_symbol).name() }
+            }
+        }
+
     }
 
     pub fn name_owned(&self) -> Option<String> {
@@ -101,8 +110,18 @@ impl<'a> Symbol<'a> {
     }
 
     pub fn set_value(&mut self, value: SymbolValue) -> Result<(), SymbolSetError> {
+       // println!("XYZZY set_value {:#?} = {:#?}",self.name(),value);
+        let x = self.set_value_x(value);
+        //println!("XYZZY set_value result= {:#?}",x);
+
+        x
+    }
+    pub fn set_value_x(&mut self, value: SymbolValue) -> Result<(), SymbolSetError> {
+
+
+
         ensure!(!self.is_const(), SymbolSetError::IsConst);
-        ensure!(!self.is_choice(), SymbolSetError::IsChoice);
+       // ensure!(!self.is_choice(), SymbolSetError::IsChoice);
         ensure!(self.prompt_count() > 0, SymbolSetError::CannotSetManually);
 
         let set_tristate = |value: Tristate| -> Result<(), SymbolSetError> {
@@ -139,7 +158,7 @@ impl<'a> Symbol<'a> {
                 });
             }
             if value < min {
-                return Err(SymbolSetError::RequiredByOther {
+                let err =  Err(SymbolSetError::RequiredByOther {
                     min,
                     max,
                     rev_deps: self
@@ -150,33 +169,42 @@ impl<'a> Symbol<'a> {
                         .map(|x| x.display(self.bridge).to_string())
                         .collect_vec(),
                 });
+                return err
             }
+
             ensure!(max >= min, SymbolSetError::InvalidVisibility { min, max });
             ensure!(
                 !(value == Tristate::Mod
                     && self.bridge.symbol("MODULES").unwrap().get_tristate_value() == Tristate::No),
                 SymbolSetError::ModulesNotEnabled
             );
+
             ensure!(
                 (self.bridge.vtable.c_sym_set_tristate_value)(self.c_symbol, value),
                 SymbolSetError::AssignmentFailed
             );
             Ok(())
         };
+        //println!("XYZZY set_value B type={:#?}",self.symbol_type());
 
         match (self.symbol_type(), value) {
             (SymbolType::Unknown, SymbolValue::Auto(_)) => return Err(SymbolSetError::UnknownType),
             (SymbolType::Boolean, SymbolValue::Auto(value)) => {
+
                 // Allowed "y" "n"
                 ensure!(matches!(value.as_str(), "y" | "n"), SymbolSetError::InvalidBoolean);
                 self.set_value(SymbolValue::Boolean(
                     value.parse::<Tristate>().unwrap() == Tristate::Yes,
                 ))?
+
             }
             (SymbolType::Tristate, SymbolValue::Auto(value)) => {
+
                 // Allowed "y" "m" "n"
                 let value = value.parse::<Tristate>().map_err(|_| SymbolSetError::InvalidTristate)?;
+
                 self.set_value(SymbolValue::Tristate(value))?
+
             }
             (SymbolType::Int, SymbolValue::Auto(value)) => {
                 // Allowed: Any u64 integer
@@ -190,7 +218,9 @@ impl<'a> Symbol<'a> {
                 self.set_value(SymbolValue::Hex(value))?
             }
             (SymbolType::String, SymbolValue::Auto(value)) => self.set_value(SymbolValue::String(value))?,
-            (SymbolType::Boolean | SymbolType::Tristate, SymbolValue::Boolean(value)) => set_tristate(value.into())?,
+            (SymbolType::Boolean | SymbolType::Tristate, SymbolValue::Boolean(value)) => {
+                set_tristate(value.into())?
+            },
             (SymbolType::Boolean, SymbolValue::Tristate(value)) if value != Tristate::Mod => set_tristate(value)?,
             (SymbolType::Tristate, SymbolValue::Tristate(value)) => set_tristate(value)?,
             (SymbolType::Int, SymbolValue::Int(value)) => {
@@ -228,7 +258,9 @@ impl<'a> Symbol<'a> {
             }
             (SymbolType::Int, SymbolValue::Number(value)) => return self.set_value(SymbolValue::Int(value)),
             (SymbolType::Hex, SymbolValue::Number(value)) => return self.set_value(SymbolValue::Hex(value)),
-            (_, _) => return Err(SymbolSetError::InvalidValue),
+            (_, _) => {
+                return Err(SymbolSetError::InvalidValue)
+            },
         };
 
         self.bridge.recalculate_all_symbols();
@@ -291,9 +323,9 @@ impl<'a> Symbol<'a> {
         unsafe { &*self.c_symbol }.is_const()
     }
 
-    pub fn is_choice(&self) -> bool {
-        unsafe { &*self.c_symbol }.is_choice()
-    }
+    // pub fn is_choice(&self) -> bool {
+    //     unsafe { &*self.c_symbol }.is_choice()
+    // }
 
     pub fn prompt_count(&self) -> usize {
         (self.bridge.vtable.c_sym_prompt_count)(self.c_symbol)
@@ -304,6 +336,7 @@ impl<'a> Symbol<'a> {
         unsafe { &*self.c_symbol }.visible
     }
 
+    /*
     pub fn choices(&self) -> anyhow::Result<Vec<*mut CSymbol>> {
         anyhow::ensure!(
             self.is_choice(),
@@ -315,13 +348,17 @@ impl<'a> Symbol<'a> {
         unsafe { symbols.set_len(count) };
         Ok(symbols)
     }
+     */
 
     pub fn get_tristate_value(&self) -> Tristate {
         unsafe { &*self.c_symbol }.get_tristate_value()
     }
 
     pub fn visibility_expression_bare(&self) -> Result<Option<Expr>, ExprConvertError> {
-        unsafe { &mut *(self.bridge.vtable.c_sym_direct_deps_with_prompts)(self.c_symbol) }.expr()
+        unsafe {
+           // println!("R visibility_expression_bare self.c_symbol={:#}",*self.c_symbol);
+            &mut *(self.bridge.vtable.c_sym_direct_deps_with_prompts)(self.c_symbol)
+        }.expr()
     }
 
     pub fn visibility_expression(&self) -> Result<Expr, ExprConvertError> {
@@ -381,6 +418,9 @@ impl<'a> Symbol<'a> {
 
 impl<'a> fmt::Display for Symbol<'a> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        if self.c_symbol.is_null() {
+             return write!(f, "<NULL>")
+        }
         if let Some(name) = self.name() {
             let (name_color, value_indicator) = match self.get_value() {
                 Ok(SymbolValue::Boolean(value)) => (
@@ -397,9 +437,9 @@ impl<'a> fmt::Display for Symbol<'a> {
                 _ => (Color::Blue, "".into()),
             };
             write!(f, "{}{}", name.color(name_color), value_indicator.dimmed())
-        } else if self.is_choice() {
-            let choices = self.choices().unwrap().into_iter().map(|s| self.bridge.wrap_symbol(s));
-            write!(f, "<choice>[{}]", choices.format(", "))
+        // } else if self.is_choice() {
+        //     let choices = self.choices().unwrap().into_iter().map(|s| self.bridge.wrap_symbol(s));
+        //     write!(f, "<choice>[{}]", choices.format(", "))
         } else {
             write!(f, "<??>")
         }

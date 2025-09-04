@@ -1,9 +1,12 @@
+use std::borrow::Cow;
 use super::types::*;
 use anyhow::{Ok, Result};
 use libc::{c_char, c_int, c_void, size_t};
 use libloading::os::unix::Symbol as RawSymbol;
 use libloading::{Library, Symbol as LSymbol};
 use std::collections::HashMap;
+use std::ffi::CStr;
+use std::ops::Deref;
 use std::path::PathBuf;
 
 pub type EnvironMap = HashMap<String, String>;
@@ -31,7 +34,7 @@ pub struct BridgeVTable {
     pub c_get_env: RawSymbol<FuncGetEnv>,
     pub c_symbol_count: RawSymbol<FuncSymbolCount>,
     pub c_get_all_symbols: RawSymbol<FuncGetAllSymbols>,
-    pub c_get_choice_symbols: RawSymbol<FuncGetChoiceSymbols>,
+    //pub c_get_choice_symbols: RawSymbol<FuncGetChoiceSymbols>,
     pub c_sym_set_tristate_value: RawSymbol<FuncSymSetTristateValue>,
     pub c_sym_set_string_value: RawSymbol<FuncSymSetStringValue>,
     pub c_sym_get_string_value: RawSymbol<FuncSymGetStringValue>,
@@ -57,7 +60,7 @@ impl BridgeVTable {
         let c_get_env = load_symbol!(FuncGetEnv, b"autokernel_getenv");
         let c_symbol_count = load_symbol!(FuncSymbolCount, b"symbol_count");
         let c_get_all_symbols = load_symbol!(FuncGetAllSymbols, b"get_all_symbols");
-        let c_get_choice_symbols = load_symbol!(FuncGetChoiceSymbols, b"get_choice_symbols");
+        //let c_get_choice_symbols = load_symbol!(FuncGetChoiceSymbols, b"get_choice_symbols");
         let c_sym_set_tristate_value = load_symbol!(FuncSymSetTristateValue, b"sym_set_tristate_value");
         let c_sym_set_string_value = load_symbol!(FuncSymSetStringValue, b"sym_set_string_value");
         let c_sym_get_string_value = load_symbol!(FuncSymGetStringValue, b"sym_get_string_value");
@@ -76,7 +79,7 @@ impl BridgeVTable {
             c_symbol_count,
             c_get_env,
             c_get_all_symbols,
-            c_get_choice_symbols,
+           // c_get_choice_symbols,
             c_sym_set_tristate_value,
             c_sym_set_string_value,
             c_sym_get_string_value,
@@ -94,9 +97,32 @@ impl BridgeVTable {
     /// out of scope with the vtable reference that was used to call it
     pub fn get_all_symbols(&self) -> Vec<*mut CSymbol> {
         let count = (self.c_symbol_count)();
-        let mut symbols = Vec::with_capacity(count);
+        println!("XYZZY SYMBOLCOUNT={count}");
+        let mut symbols: Vec<*mut CSymbol> = Vec::with_capacity(count);
         (self.c_get_all_symbols)(symbols.as_mut_ptr() as *mut *mut CSymbol);
         unsafe { symbols.set_len(count) };
+        // unsafe {
+        //     for s in &symbols {
+        //         let r = (**s).name
+        //             .as_ref()
+        //             .map(|obj| String::from_utf8_lossy(CStr::from_ptr(obj).to_bytes()));
+        //         match r {
+        //             None => {println!(">> NULL <<");}
+        //             Some(name) => {println!(">> {}", name);}
+        //         }
+        //     }
+        // }
+    // for s in symbols.iter() {
+        //     match s.name() {
+        //         None => {}
+        //         Some(name) => {
+        //             if name == "ARCH_ACTIONS" {
+        //                 println!("XYZZY SYMBOLPTR={s:#?}");
+        //             }
+        //         }
+        //     }
+        //
+        // }
         symbols
     }
 }
