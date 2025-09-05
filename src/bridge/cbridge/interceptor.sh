@@ -45,7 +45,7 @@ function build_bridge() {
 			-std="$std" \
 			$getenv_override \
 			"-DMESSAGE_CALLBACK_TYPE=$message_callback_type" \
-			-I ./scripts/kconfig -c -o "$o" scripts/kconfig/"$i".c \
+			-I ./scripts/kconfig -I scripts/include -c -o "$o" scripts/kconfig/"$i".c \
 			|| die "Failed to compile $i for autokernel bridge!"
 	done
 

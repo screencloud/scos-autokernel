@@ -18,14 +18,17 @@ pub enum ExprConvertError {
     NullExpr,
     #[error("encountered a null symbol")]
     NullSymbol,
+    /*
     #[error("List expressions are not supported and shouldn't occur. Please report this as a bug if you encounter this message under normal use.")]
     List,
+    */
+
     #[error("Range expressions are not supported and shouldn't occur. Please report this as a bug if you encounter this message under normal use.")]
     Range,
 }
 
 #[derive(Debug, Eq, PartialEq, Ord, PartialOrd, Clone, Copy)]
-#[repr(u8)]
+#[repr(C)]
 #[allow(dead_code)]
 pub enum Tristate {
     No,
@@ -104,11 +107,9 @@ enum PropertyType {
     Comment, /* text associated with a comment */
     Menu,    /* prompt associated with a menu or menuconfig symbol */
     Default, /* default y */
-    Choice,  /* choice value */
     Select,  /* select BAR */
     Imply,   /* imply BAR */
-    Range,   /* range 7..100 (for a symbol) */
-    Symbol,  /* where a symbol is defined */
+    Range    /* range 7..100 (for a symbol) */
 }
 
 #[repr(C)]
@@ -155,7 +156,6 @@ pub enum CExprType {
     Leq,
     Gth,
     Geq,
-    List,
     Symbol,
     Range,
 }
@@ -164,11 +164,15 @@ pub enum CExprType {
 pub union CExprData {
     expression: *mut CExpr,
     symbol: *mut CSymbol,
+    pub initdata: *mut c_void,
 }
 
 #[repr(C)]
 pub struct CExpr {
+    node: HlistNode, // Not needed
     expr_type: CExprType,
+    val: Tristate,
+    pub val_is_valid: bool,
     left: CExprData,
     right: CExprData,
 }
@@ -192,6 +196,7 @@ impl CExprValue {
 }
 
 fn convert_expression(expression: *mut CExpr) -> Result<Option<Expr>, ExprConvertError> {
+
     macro_rules! expr {
         ($which: ident) => {
             if expression.is_null() {
@@ -216,6 +221,7 @@ fn convert_expression(expression: *mut CExpr) -> Result<Option<Expr>, ExprConver
         return Ok(None);
     }
 
+
     Ok(Some(match unsafe { (*expression).expr_type } {
         CExprType::None => return Err(ExprConvertError::None),
         CExprType::Or => Expr::Or(expr!(left), expr!(right)),
@@ -227,20 +233,29 @@ fn convert_expression(expression: *mut CExpr) -> Result<Option<Expr>, ExprConver
         CExprType::Leq => Expr::Terminal(Terminal::Leq(sym!(left), sym!(right))),
         CExprType::Gth => Expr::Terminal(Terminal::Gth(sym!(left), sym!(right))),
         CExprType::Geq => Expr::Terminal(Terminal::Geq(sym!(left), sym!(right))),
-        CExprType::List => return Err(ExprConvertError::List),
         CExprType::Symbol => Expr::Terminal(Terminal::Symbol(sym!(left))),
         CExprType::Range => return Err(ExprConvertError::Range),
     }))
 }
 
 #[repr(C)]
+pub struct HlistNode {
+    pub next: *mut HlistNode,
+    pub pprev: *mut *mut HlistNode,
+}
+
+#[repr(C)]
 pub struct CSymbol {
-    next: *const c_void, // Not needed
+    pub node: HlistNode,
     pub name: *const c_char,
     pub symbol_type: SymbolType,
     pub current_value: CSymbolValue,
-    default_values: [CSymbolValue; 4],
+    default_values: [CSymbolValue; 5],
     pub visible: Tristate,
+
+    menus: *const c_void,
+    choice_link: *const c_void,
+
     pub flags: SymbolFlags,
     property: *mut CProperty,
     pub(super) direct_dependencies: CExprValue,
@@ -287,9 +302,6 @@ impl CSymbol {
         self.flags.intersects(SymbolFlags::CONST)
     }
 
-    pub fn is_choice(&self) -> bool {
-        self.flags.intersects(SymbolFlags::CHOICE)
-    }
 }
 
 use bitflags::bitflags;
@@ -297,18 +309,13 @@ use bitflags::bitflags;
 bitflags! {
     #[repr(C)]
     #[derive(Clone, Copy, Debug)]
-    pub struct SymbolFlags: u32 {
+    pub struct SymbolFlags: c_int {
         // WARNING might change in kernel and while unlikely should be checked
         const CONST     = 0x0001;
         const CHECK     = 0x0008;
-        const CHOICE    = 0x0010;
-        const CHOICEVAL = 0x0020;
         const VALID     = 0x0080;
-        const OPTIONAL  = 0x0100;
         const WRITE     = 0x0200;
-        const CHANGED   = 0x0400;
         const WRITTEN   = 0x0800;
-        const NOWRITE   = 0x1000;
         const CHECKED   = 0x2000;
         const WARNED    = 0x8000;
     }

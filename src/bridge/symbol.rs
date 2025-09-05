@@ -102,7 +102,6 @@ impl<'a> Symbol<'a> {
 
     pub fn set_value(&mut self, value: SymbolValue) -> Result<(), SymbolSetError> {
         ensure!(!self.is_const(), SymbolSetError::IsConst);
-        ensure!(!self.is_choice(), SymbolSetError::IsChoice);
         ensure!(self.prompt_count() > 0, SymbolSetError::CannotSetManually);
 
         let set_tristate = |value: Tristate| -> Result<(), SymbolSetError> {
@@ -157,6 +156,7 @@ impl<'a> Symbol<'a> {
                     && self.bridge.symbol("MODULES").unwrap().get_tristate_value() == Tristate::No),
                 SymbolSetError::ModulesNotEnabled
             );
+
             ensure!(
                 (self.bridge.vtable.c_sym_set_tristate_value)(self.c_symbol, value),
                 SymbolSetError::AssignmentFailed
@@ -167,16 +167,21 @@ impl<'a> Symbol<'a> {
         match (self.symbol_type(), value) {
             (SymbolType::Unknown, SymbolValue::Auto(_)) => return Err(SymbolSetError::UnknownType),
             (SymbolType::Boolean, SymbolValue::Auto(value)) => {
+
                 // Allowed "y" "n"
                 ensure!(matches!(value.as_str(), "y" | "n"), SymbolSetError::InvalidBoolean);
                 self.set_value(SymbolValue::Boolean(
                     value.parse::<Tristate>().unwrap() == Tristate::Yes,
                 ))?
+
             }
             (SymbolType::Tristate, SymbolValue::Auto(value)) => {
+
                 // Allowed "y" "m" "n"
                 let value = value.parse::<Tristate>().map_err(|_| SymbolSetError::InvalidTristate)?;
+
                 self.set_value(SymbolValue::Tristate(value))?
+
             }
             (SymbolType::Int, SymbolValue::Auto(value)) => {
                 // Allowed: Any u64 integer
@@ -291,10 +296,6 @@ impl<'a> Symbol<'a> {
         unsafe { &*self.c_symbol }.is_const()
     }
 
-    pub fn is_choice(&self) -> bool {
-        unsafe { &*self.c_symbol }.is_choice()
-    }
-
     pub fn prompt_count(&self) -> usize {
         (self.bridge.vtable.c_sym_prompt_count)(self.c_symbol)
     }
@@ -302,18 +303,6 @@ impl<'a> Symbol<'a> {
     pub fn visible(&self) -> Tristate {
         self.recalculate();
         unsafe { &*self.c_symbol }.visible
-    }
-
-    pub fn choices(&self) -> anyhow::Result<Vec<*mut CSymbol>> {
-        anyhow::ensure!(
-            self.is_choice(),
-            "The symbol must be a choice symbol to call .choices()"
-        );
-        let count = (self.bridge.vtable.c_get_choice_symbols)(self.c_symbol, std::ptr::null_mut() as *mut *mut CSymbol);
-        let mut symbols = Vec::with_capacity(count);
-        (self.bridge.vtable.c_get_choice_symbols)(self.c_symbol, symbols.as_mut_ptr() as *mut *mut CSymbol);
-        unsafe { symbols.set_len(count) };
-        Ok(symbols)
     }
 
     pub fn get_tristate_value(&self) -> Tristate {
@@ -397,9 +386,6 @@ impl<'a> fmt::Display for Symbol<'a> {
                 _ => (Color::Blue, "".into()),
             };
             write!(f, "{}{}", name.color(name_color), value_indicator.dimmed())
-        } else if self.is_choice() {
-            let choices = self.choices().unwrap().into_iter().map(|s| self.bridge.wrap_symbol(s));
-            write!(f, "<choice>[{}]", choices.format(", "))
         } else {
             write!(f, "<??>")
         }
