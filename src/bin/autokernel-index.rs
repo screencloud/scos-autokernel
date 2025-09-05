@@ -67,19 +67,11 @@ fn main() -> Result<()> {
             let bridge = Bridge::new(args.kernel_dir.clone(), Some(&args.bash))?;
             let mut conn = Connection::open(&args.db)?;
             create_schema(&mut conn)?;
-            println!("HELLO INDEX");
-            let kernel_name = bridge.get_env("PWD").unwrap().split("/").last().unwrap().to_string();
-            let kernel_version = bridge.get_env("KERNELVERSION").unwrap().to_string();
-            println!("HELLO INDEX kernel_version={kernel_version}");
 
-            //let (v_major, v_minor, v_patch) = parse_kernel_version(&bridge.get_env("KERNELVERSION").unwrap())?;
-            let v_major=6;
-            let v_minor = 17;
-            let v_patch = 1;
+            let kernel_name = bridge.get_env("PWD").unwrap().split("/").last().unwrap().to_string();
+            let (v_major, v_minor, v_patch) = parse_kernel_version(&bridge.get_env("KERNELVERSION").unwrap())?;
             let kernel_id = Uuid::new_v4().to_string();
             let tx = conn.transaction()?;
-            println!("HELLO TX");
-
             tx.execute(
                 "INSERT INTO kernel VALUES (?1, ?2, ?3, ?4, ?5)",
                 (&kernel_id, v_major, v_minor, v_patch, kernel_name),
@@ -202,7 +194,6 @@ fn parse_kernel_version(ver: &str) -> Result<(u32, u32, u32)> {
 
 fn index_kernel(bridge: &Bridge, tx: &Transaction, kernel_id: &str) -> Result<()> {
     print!("{:>12} kernel...\r", "Indexing".cyan());
-    println!("{:>12} kernel...\r", "Indexing".cyan());
     io::stdout().flush()?;
 
     let time_start = Instant::now();

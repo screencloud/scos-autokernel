@@ -6,10 +6,9 @@
 #include <stdint.h>
 
 #include "lkc.h"
-#include "internal.h"
 #include <ctype.h>
 
-bool autokernel_debug = true;
+bool autokernel_debug = false;
 extern struct symbol symbol_yes, symbol_no, symbol_mod;
 size_t n_symbols = 0;
 size_t n_unknown_symbols = 0;
@@ -66,7 +65,7 @@ void init_environment(char const* const* env) {
 bool init(char const* const* env) {
 	struct timeval start, now;
 	struct symbol* sym;
-	//int i;
+	int i;
 	char saved_working_directory[2048];
 
 	// Never let the kconfig parser print any messages
@@ -106,8 +105,8 @@ bool init(char const* const* env) {
 
 	// Pre-count symbols: Three static symbols plus all parsed symbols
 	n_symbols = 3;
-	for_all_symbols(sym) {  ++n_symbols;	}
-	DEBUG("XYZZY Found %ld symbols\n", n_symbols);
+	for_all_symbols(i, sym) { ++n_symbols; }
+	DEBUG("Found %ld symbols\n", n_symbols);
 	return true;
 }
 
@@ -121,29 +120,13 @@ size_t symbol_count() { return n_symbols; }
  */
 void get_all_symbols(struct symbol** out) {
 	struct symbol* sym;
-
-//	size_t i;
-//	i=0;
-//for_all_symbols(sym) {
-//++i;
-//}
-//	DEBUG("XYZZY GEtallsymbols %ld symbols\n", i);
+	int i;
 
 	struct symbol** next = out;
 	*(next++) = &symbol_yes;
 	*(next++) = &symbol_no;
 	*(next++) = &symbol_mod;
-	for_all_symbols(sym) {
-	    *(next++) = sym;
-//DEBUG("XYZZY symptr %ld \n", sym);
-//        if (!sym) break;
-//
-//	    if (sym->name) {
-//	        *(next++) = sym;
-//        }
-	}
-
-	//*next = NULL;  // <-- NULL terminate the output array here
+	for_all_symbols(i, sym) { *(next++) = sym; }
 }
 
 /**
@@ -190,7 +173,6 @@ uint64_t sym_int_get_max(struct symbol* sym) {
  * Returns a list of all choice value symbols assiocated with a choice.
  * If out == nullptr this just returns the number of associated symbols.
  */
-/*
 size_t get_choice_symbols(struct symbol* sym, struct symbol** out) {
 	struct property* prop;
 	struct symbol* choice_sym;
@@ -210,16 +192,12 @@ size_t get_choice_symbols(struct symbol* sym, struct symbol** out) {
 
 	return i;
 }
-*/
 
 struct expr* sym_direct_deps_with_prompts(struct symbol* sym) {
 	struct property* prop;
 	struct expr* e = NULL;
-
-	for_all_prompts(sym, prop) {
-	  e = expr_alloc_or(e, /*expr_copy(*/prop->visible.expr/*)*/);
-	}
-	return expr_eliminate_dups(expr_alloc_and(e, /*expr_copy(*/sym->dir_dep.expr/*)*/));
+	for_all_prompts(sym, prop) { e = expr_alloc_or(e, expr_copy(prop->visible.expr)); }
+	return expr_eliminate_dups(expr_alloc_and(e, expr_copy(sym->dir_dep.expr)));
 }
 
 size_t sym_prompt_count(struct symbol* sym) {

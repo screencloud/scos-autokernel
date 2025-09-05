@@ -46,8 +46,6 @@ impl Bridge {
     /// load it and associated functions and create and return a
     /// Bridge object to interface with the C part.
     pub fn new(kernel_dir: PathBuf, bash: Option<&str>) -> Result<Bridge> {
-        println!("************ Hello World BRIDGE NEW NEWW");
-
         let (library_path, env) = prepare_bridge(&kernel_dir, bash)
             .context(format!("Could not prepare bridge in {}", kernel_dir.display()))?;
 
@@ -73,27 +71,14 @@ impl Bridge {
         let symbols = vtable.get_all_symbols();
         let mut name_to_symbol = HashMap::new();
         for symbol in &symbols {
-            if symbol.is_null() {
-                continue;
-            }
-            unsafe {
-                let r = (**symbol).name
-                    .as_ref()
-                    .map(|obj| String::from_utf8_lossy(CStr::from_ptr(obj).to_bytes()));
-
-                //println!("HERE {:#?}", r);
-            }
             // Skip symbols that have no type (this seems to apply to symbols that just
             // refer to values for other symbols)
             if unsafe { (**symbol).symbol_type } == SymbolType::Unknown {
-                //println!("SKIP");
                 continue;
             }
 
             if let Some(name) = unsafe { (**symbol).name().map(|obj| obj.into_owned()) } {
                 name_to_symbol.insert(name, *symbol);
-            } else {
-               // println!("SKIP2");
             }
         }
 
@@ -107,7 +92,7 @@ impl Bridge {
         let n_valid_symbols = bridge
             .symbols
             .iter()
-            .filter(|s| !s.is_null() && !unsafe { &***s }.name.is_null() && !unsafe { &***s }.flags.intersects(SymbolFlags::CONST))
+            .filter(|s| !unsafe { &***s }.name.is_null() && !unsafe { &***s }.flags.intersects(SymbolFlags::CONST))
             .count();
         println!(
             "{:>12} bridge [kernel {}, {} symbols] in {:.2?}",
@@ -133,12 +118,8 @@ impl Bridge {
     /// Saves all modified (unsaved) values
     /// Iterates over all symbols and recalculates them
     pub fn recalculate_all_symbols(&self) {
-        //println!("XYZZY recalculate_all_symbols...");
         //iterate
         for symbol in &self.symbols {
-            if symbol.is_null() {
-                continue;
-            }
             // skip constant symbols (Can't be changed)
             if unsafe { &**symbol }.flags.intersects(SymbolFlags::CONST) {
                 continue;
@@ -152,15 +133,11 @@ impl Bridge {
             //recalculate
             symbol.recalculate();
         }
-       // println!("XYZZY recalculate_all_symbols DONE");
     }
 
     pub fn write_config(&self, path: impl AsRef<Path>) -> Result<()> {
-        println!("XYZZY write_config....");
         let c: CString = CString::new(path.as_ref().to_str().context("Invalid filename")?)?;
         ensure!((self.vtable.c_conf_write)(c.as_ptr()) == 0, "Could not write config");
-        println!("XYZZY write_config....DONE");
-
         Ok(())
     }
 
@@ -187,7 +164,6 @@ impl Bridge {
 
 /// Compile (or find existing) bridge shared library.
 fn prepare_bridge(kernel_dir: &PathBuf, bash: Option<&str>) -> Result<(PathBuf, EnvironMap)> {
-    println!("************ Hello World prepare_bridge");
     let time_start = Instant::now();
     let kconfig_dir = kernel_dir.join("scripts").join("kconfig");
 
@@ -201,8 +177,6 @@ fn prepare_bridge(kernel_dir: &PathBuf, bash: Option<&str>) -> Result<(PathBuf, 
         .open(&kconfig_bridge_c)
         .context(format!("Could not open {}", kconfig_bridge_c.display()))?
         .write_all(include_bytes!("cbridge/bridge.c"))?;
-
-    println!("************ created file autokernel_bridge.c");
 
     // This interceptor script is used to run autokernel's bridge with the
     // correct environment variables, which are set by the Makefile.
@@ -235,8 +209,6 @@ fn prepare_bridge(kernel_dir: &PathBuf, bash: Option<&str>) -> Result<(PathBuf, 
         .into_os_string()
         .into_string()
         .map_err(|e| Error::msg(format!("OsString conversion failed for {:?}", e)))?;
-
-    println!("************ HERE");
 
     // Build our bridge by intercepting the final call of a make defconfig invocation.
     print!("{:>12} bridge for {}\r", "Building".cyan(), kernel_dir.display());
